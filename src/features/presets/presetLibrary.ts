@@ -16,10 +16,7 @@ export interface PresetSwitchPosition {
   activeConnections: ElectricalConnection[]
 }
 
-export type PresetCategory =
-  | 'one_pickup'
-  | 'two_pickups'
-  | 'three_pickups'
+export type PresetCategory = 'one_pickup' | 'two_pickups' | 'three_pickups'
 
 export interface CircuitPreset {
   id: string
@@ -55,45 +52,6 @@ const catalogItem = (id: string): CatalogItem => {
   return item
 }
 
-const localizeComponentLabel = (label: string): string =>
-  label
-    .replaceAll('Single / Both', 'Simple / Ambas')
-    .replaceAll('North / Both / South', 'Norte / Ambas / Sur')
-    .replaceAll('Output Jack', 'Jack de salida')
-    .replaceAll('Ground', 'Tierra')
-    .replaceAll('Single Coil', 'Single coil')
-    .replaceAll('Humbucker', 'Humbucker')
-    .replaceAll('Master', 'Maestro')
-    .replaceAll('Volume', 'Volumen')
-    .replaceAll('Tone Cap', 'Condensador tono')
-    .replaceAll('Tone', 'Tono')
-    .replaceAll('Neck', 'Mastil')
-    .replaceAll('Middle', 'Medio')
-    .replaceAll('Bridge', 'Puente')
-    .replaceAll('Series', 'Serie')
-    .replaceAll('Split', 'Split')
-    .replaceAll('Parallel', 'Paralelo')
-    .replaceAll('Selector toggle', 'Selector 3 posiciones')
-
-const localizePositionLabel = (label: string): string =>
-  label
-    .replaceAll('Single Coil', 'Single coil')
-    .replaceAll('Both Coils', 'Ambas bobinas')
-    .replaceAll('Both', 'Ambas')
-    .replaceAll('Series', 'Serie')
-    .replaceAll('Parallel', 'Paralelo')
-    .replaceAll('Neck', 'Mastil')
-    .replaceAll('Middle', 'Medio')
-    .replaceAll('Bridge', 'Puente')
-    .replaceAll('North', 'Norte')
-    .replaceAll('South', 'Sur')
-
-const localizeSwitchPositions = (switchPositions: PresetSwitchPosition[]): PresetSwitchPosition[] =>
-  switchPositions.map((switchPosition) => ({
-    ...switchPosition,
-    label: localizePositionLabel(switchPosition.label),
-  }))
-
 const component = (
   catalogId: string,
   id: string,
@@ -104,7 +62,7 @@ const component = (
 ): CircuitComponent =>
   createComponentFromCatalogItem(catalogItem(catalogId), {
     id,
-    label: localizeComponentLabel(label),
+    label,
     position: { x, y },
     params,
   })
@@ -148,18 +106,36 @@ const compactGroundBusConnections = (
   connections: ElectricalConnection[],
 ): ElectricalConnection[] => connections.filter((connection) => !isRedundantGroundWire(connection))
 
-const groundSingleCoil = (prefix: string, pickupId: string): ElectricalConnection[] => [
+const noSwitchPositions: PresetSwitchPosition[] = []
+const singlePickupParams = { coilCount: 1, conductorMode: '2_conductor', hasShield: true }
+const humbucker4Params = {
+  coilCount: 2,
+  conductorMode: '4_conductor',
+  hasShield: true,
+  resistanceOhms: 8200,
+}
+const volume250kParams = { resistanceOhms: 250000, taper: 'audio', position: 1 }
+const volume500kParams = { resistanceOhms: 500000, taper: 'audio', position: 1 }
+const tone250kParams = { resistanceOhms: 250000, taper: 'audio', position: 1 }
+const tone500kParams = { resistanceOhms: 500000, taper: 'audio', position: 1 }
+const toneCapParams = { capacitanceFarads: 22e-9 }
+const bassCapParams = { capacitanceFarads: 2.2e-9 }
+
+const jackAndGround = (x = 780, y = 120): CircuitComponent[] => [
+  component('mono_jack', 'jack', 'Jack de salida', x, y),
+  component('ground', 'ground', 'Tierra', x - 160, y + 180),
+]
+
+const jackGroundConnections = (): ElectricalConnection[] => [
+  wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
+]
+
+const singleGround = (prefix: string, pickupId: string): ElectricalConnection[] => [
   wire(`${prefix}-ground`, pickupId, 'ground', 'ground', 'ground'),
   wire(`${prefix}-shield-ground`, pickupId, 'shield', 'ground', 'ground'),
 ]
 
-const groundHumbucker = (prefix: string, pickupId: string): ElectricalConnection[] => [
-  wire(`${prefix}-north-finish-ground`, pickupId, 'north_finish', 'ground', 'ground'),
-  wire(`${prefix}-south-finish-ground`, pickupId, 'south_finish', 'ground', 'ground'),
-  wire(`${prefix}-shield-ground`, pickupId, 'shield', 'ground', 'ground'),
-]
-
-const seriesHumbuckerGround = (prefix: string, pickupId: string): ElectricalConnection[] => [
+const humbuckerSeriesGround = (prefix: string, pickupId: string): ElectricalConnection[] => [
   wire(`${prefix}-series-link`, pickupId, 'north_finish', pickupId, 'south_start'),
   wire(`${prefix}-south-finish-ground`, pickupId, 'south_finish', 'ground', 'ground'),
   wire(`${prefix}-shield-ground`, pickupId, 'shield', 'ground', 'ground'),
@@ -178,11 +154,38 @@ const toneNetwork = (
   wire(`${prefix}-cap-ground`, capacitorId, 'b', 'ground', 'ground'),
 ]
 
-const noSwitchPositions: PresetSwitchPosition[] = []
-const singlePickupParams = { coilCount: 1, conductorMode: '2_conductor', hasShield: true }
-const humbucker4Params = { coilCount: 2, conductorMode: '4_conductor', hasShield: true }
+const threePositionSelectorPosition = (
+  id: string,
+  switchId: string,
+  position: number,
+  label: string,
+  throws: Array<'neck' | 'bridge'>,
+): PresetSwitchPosition => ({
+  id,
+  switchId,
+  label,
+  position,
+  activeConnections: throws.map((throwId) =>
+    wire(`${id}-${throwId}-common`, switchId, throwId, switchId, 'common'),
+  ),
+})
 
-function withStringExciter(preset: CircuitPreset): CircuitPreset {
+const fivePositionSelectorPosition = (
+  id: string,
+  position: number,
+  label: string,
+  throws: Array<'bridge' | 'middle' | 'neck'>,
+): PresetSwitchPosition => ({
+  id,
+  switchId: 'selector',
+  label,
+  position,
+  activeConnections: throws.map((throwId) =>
+    wire(`${id}-${throwId}-common`, 'selector', throwId, 'selector', 'common'),
+  ),
+})
+
+const withStringExciter = (preset: CircuitPreset): CircuitPreset => {
   if (preset.components.some((presetComponent) => presetComponent.type === 'string_exciter')) {
     return preset
   }
@@ -198,668 +201,762 @@ function withStringExciter(preset: CircuitPreset): CircuitPreset {
   }
 }
 
-function singlePickupVolumeJack(): CircuitPreset {
-  const components = [
-    component('pickup', 'pickup', 'Single Coil', 80, 120, singlePickupParams),
-    component('potentiometer', 'volume', 'Volume 250k', 340, 120),
-    component('mono_jack', 'jack', 'Output Jack', 620, 120),
-    component('ground', 'ground', 'Ground', 340, 300),
-  ]
-  const connections = [
-    wire('pickup-hot-volume-in', 'pickup', 'hot', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundSingleCoil('pickup', 'pickup'),
-  ]
+const makePreset = (
+  id: string,
+  name: string,
+  category: PresetCategory,
+  description: string,
+  components: CircuitComponent[],
+  connections: ElectricalConnection[],
+  switchPositions: PresetSwitchPosition[] = noSwitchPositions,
+): CircuitPreset => ({
+  id,
+  name,
+  category,
+  description,
+  components,
+  connections,
+  switchPositions,
+})
 
-  return {
-    id: 'single-pickup-volume-jack',
-    name: '01 S - Vol - Jack',
-    category: 'one_pickup',
-    description: 'Una single coil con volumen maestro, jack mono y tierra.',
-    components,
-    connections,
-    switchPositions: noSwitchPositions,
-  }
+function sJack(): CircuitPreset {
+  return makePreset(
+    's-jack',
+    'S - Jack',
+    'one_pickup',
+    'Una pastilla single coil conectada directo al jack.',
+    [
+      component('pickup', 'pickup', 'Single coil', 120, 140, singlePickupParams),
+      ...jackAndGround(520, 140),
+    ],
+    [
+      wire('pickup-hot-jack-tip', 'pickup', 'hot', 'jack', 'tip'),
+      ...singleGround('pickup', 'pickup'),
+      ...jackGroundConnections(),
+    ],
+  )
 }
 
-function singlePickupVolumeToneJack(): CircuitPreset {
-  const components = [
-    component('pickup', 'pickup', 'Single Coil', 80, 120, singlePickupParams),
-    component('potentiometer', 'volume', 'Volume 250k', 320, 100),
-    component('potentiometer', 'tone', 'Tone 250k', 320, 240),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 520, 250),
-    component('mono_jack', 'jack', 'Output Jack', 700, 120),
-    component('ground', 'ground', 'Ground', 520, 360),
-  ]
-  const connections = [
-    wire('pickup-hot-volume-in', 'pickup', 'hot', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundSingleCoil('pickup', 'pickup'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-
-  return {
-    id: 'single-pickup-volume-tone-jack',
-    name: '02 S - Vol/Tono - Jack',
-    category: 'one_pickup',
-    description: 'Single coil con volumen, tono pasivo, capacitor de 22nF, jack y tierra.',
-    components,
-    connections,
-    switchPositions: noSwitchPositions,
-  }
+function sKillSwitchJack(): CircuitPreset {
+  return makePreset(
+    's-kill-switch-jack',
+    'S - Kill switch - Jack',
+    'one_pickup',
+    'Single coil con switch de silencio antes del jack.',
+    [
+      component('pickup', 'pickup', 'Single coil', 80, 140, singlePickupParams),
+      component('switch', 'kill-switch', 'Kill switch', 320, 150, { kind: 'SPDT', mode: 'on_on' }),
+      ...jackAndGround(580, 140),
+    ],
+    [
+      wire('pickup-hot-kill-throw-a', 'pickup', 'hot', 'kill-switch', 'throw_a'),
+      wire('kill-common-jack-tip', 'kill-switch', 'common', 'jack', 'tip'),
+      wire('kill-throw-b-ground', 'kill-switch', 'throw_b', 'ground', 'ground'),
+      ...singleGround('pickup', 'pickup'),
+      ...jackGroundConnections(),
+    ],
+    [
+      {
+        id: 'kill-on',
+        switchId: 'kill-switch',
+        label: 'On',
+        position: 1,
+        activeConnections: [
+          wire('kill-on-common-throw-a', 'kill-switch', 'common', 'kill-switch', 'throw_a'),
+        ],
+      },
+      {
+        id: 'kill-off',
+        switchId: 'kill-switch',
+        label: 'Kill',
+        position: 2,
+        activeConnections: [
+          wire('kill-off-common-ground', 'kill-switch', 'common', 'kill-switch', 'throw_b'),
+        ],
+      },
+    ],
+  )
 }
 
-function sssFivePositionStandard(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Single Coil', 80, 80, singlePickupParams),
-    component('pickup', 'middle', 'Middle Single Coil RP/RW', 80, 210, singlePickupParams),
-    component('pickup', 'bridge', 'Bridge Single Coil', 80, 340, singlePickupParams),
-    component('selector', 'selector', 'Selector 5 posiciones', 340, 210, { positions: 5 }),
-    component('potentiometer', 'volume', 'Volume 250k', 560, 120),
-    component('potentiometer', 'tone-neck', 'Neck Tone 250k', 560, 250),
-    component('potentiometer', 'tone-middle', 'Middle Tone 250k', 560, 380),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 760, 320),
-    component('mono_jack', 'jack', 'Output Jack', 920, 120),
-    component('ground', 'ground', 'Ground', 760, 470),
-  ]
-  const baseConnections = [
-    wire('neck-hot-selector', 'neck', 'hot', 'selector', 'neck'),
-    wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
-    wire('bridge-hot-selector', 'bridge', 'hot', 'selector', 'bridge'),
-    wire('selector-common-volume-in', 'selector', 'common', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundSingleCoil('neck', 'neck'),
-    ...groundSingleCoil('middle', 'middle'),
-    ...groundSingleCoil('bridge', 'bridge'),
-    ...toneNetwork('neck-tone', 'selector', 'neck', 'tone-neck', 'tone-cap'),
-    wire('middle-tone-signal', 'selector', 'middle', 'tone-middle', 'in'),
-    wire('middle-tone-ground', 'tone-middle', 'ground', 'ground', 'ground'),
-    wire('middle-tone-out-cap', 'tone-middle', 'out', 'tone-cap', 'a'),
-  ]
-  const switchPositions = [
-    fivePositionSelectorPosition('sss-pos-1', 1, 'Bridge', ['bridge']),
-    fivePositionSelectorPosition('sss-pos-2', 2, 'Bridge + Middle', ['bridge', 'middle']),
-    fivePositionSelectorPosition('sss-pos-3', 3, 'Middle', ['middle']),
-    fivePositionSelectorPosition('sss-pos-4', 4, 'Middle + Neck', ['middle', 'neck']),
-    fivePositionSelectorPosition('sss-pos-5', 5, 'Neck', ['neck']),
-  ]
-
-  return {
-    id: 'sss-5-position-standard',
-    name: '10 SSS - 5 posiciones',
-    category: 'three_pickups',
-    description: 'SSS con selector de 5 posiciones, volumen maestro y dos tonos.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
+function sPhaseSwitchJack(): CircuitPreset {
+  return makePreset(
+    's-phase-switch-jack',
+    'S - Phase switch - Jack',
+    'one_pickup',
+    'Single coil con DPDT para invertir la fase hacia el jack.',
+    [
+      component('pickup', 'pickup', 'Single coil', 80, 150, singlePickupParams),
+      component('switch', 'phase-switch', 'Phase switch DPDT', 330, 150, {
+        kind: 'DPDT',
+        mode: 'on_on',
+      }),
+      ...jackAndGround(640, 140),
+    ],
+    [
+      wire('pickup-hot-phase-a-common', 'pickup', 'hot', 'phase-switch', 'pole_a_common'),
+      wire('pickup-ground-phase-b-common', 'pickup', 'ground', 'phase-switch', 'pole_b_common'),
+      wire('phase-a-throw-a-jack-tip', 'phase-switch', 'pole_a_throw_a', 'jack', 'tip'),
+      wire('phase-b-throw-a-ground', 'phase-switch', 'pole_b_throw_a', 'ground', 'ground'),
+      wire('phase-a-throw-b-ground', 'phase-switch', 'pole_a_throw_b', 'ground', 'ground'),
+      wire('phase-b-throw-b-jack-tip', 'phase-switch', 'pole_b_throw_b', 'jack', 'tip'),
+      wire('pickup-shield-ground', 'pickup', 'shield', 'ground', 'ground'),
+      ...jackGroundConnections(),
+    ],
+    [
+      {
+        id: 'phase-normal',
+        switchId: 'phase-switch',
+        label: 'Normal',
+        position: 1,
+        activeConnections: [
+          wire('phase-normal-a', 'phase-switch', 'pole_a_common', 'phase-switch', 'pole_a_throw_a'),
+          wire('phase-normal-b', 'phase-switch', 'pole_b_common', 'phase-switch', 'pole_b_throw_a'),
+        ],
+      },
+      {
+        id: 'phase-inverted',
+        switchId: 'phase-switch',
+        label: 'Invertida',
+        position: 2,
+        activeConnections: [
+          wire('phase-invert-a', 'phase-switch', 'pole_a_common', 'phase-switch', 'pole_a_throw_b'),
+          wire('phase-invert-b', 'phase-switch', 'pole_b_common', 'phase-switch', 'pole_b_throw_b'),
+        ],
+      },
+    ],
+  )
 }
 
-function sssFivePositionThreePots(): CircuitPreset {
-  const preset = sssFivePositionStandard()
+function sVolJack(id = 's-vol-jack', name = 'S - Vol - Jack'): CircuitPreset {
+  return makePreset(
+    id,
+    name,
+    'one_pickup',
+    'Single coil con volumen maestro y jack.',
+    [
+      component('pickup', 'pickup', 'Single coil', 80, 130, singlePickupParams),
+      component('potentiometer', 'volume', 'Volumen 250k', 340, 130, volume250kParams),
+      ...jackAndGround(620, 130),
+    ],
+    [
+      wire('pickup-hot-volume-in', 'pickup', 'hot', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...singleGround('pickup', 'pickup'),
+      ...jackGroundConnections(),
+    ],
+  )
+}
+
+function sVol50sJack(): CircuitPreset {
+  return sVolJack('s-vol-50s-jack', 'S - Vol 50s - Jack')
+}
+
+function sVolTrebleBleedSeriesJack(): CircuitPreset {
+  const preset = sVolJack(
+    's-vol-treble-bleed-series-jack',
+    'S - Vol (treble bleed serie) - Jack',
+  )
 
   return {
     ...preset,
-    id: 'sss-5-position-3-pots',
-    name: '11 SSS - 3 potenciometros',
-    description: 'SSS con selector de 5 posiciones, volumen maestro y dos tonos.',
+    description: 'Volumen con red treble bleed en serie entre entrada y salida del pot.',
+    components: [
+      ...preset.components,
+      component('capacitor', 'bleed-cap', 'Treble bleed cap', 330, 300, {
+        capacitanceFarads: 1e-9,
+      }),
+      component('resistor', 'bleed-resistor', 'Treble bleed resistor', 520, 300, {
+        resistanceOhms: 150000,
+      }),
+    ],
+    connections: [
+      ...preset.connections,
+      wire('bleed-volume-in-cap', 'volume', 'in', 'bleed-cap', 'a'),
+      wire('bleed-cap-resistor', 'bleed-cap', 'b', 'bleed-resistor', 'a'),
+      wire('bleed-resistor-volume-out', 'bleed-resistor', 'b', 'volume', 'out'),
+    ],
   }
 }
 
-function fivePositionSelectorPosition(
-  id: string,
-  position: number,
-  label: string,
-  throws: Array<'bridge' | 'middle' | 'neck'>,
-): PresetSwitchPosition {
-  return {
-    id,
-    switchId: 'selector',
-    label: localizePositionLabel(label),
-    position,
-    activeConnections: throws.map((throwId) =>
-      wire(`${id}-${throwId}-to-common`, 'selector', throwId, 'selector', 'common'),
-    ),
-  }
-}
-
-function ssThreePositionVolumeTone(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Single Coil', 80, 120, singlePickupParams),
-    component('pickup', 'bridge', 'Bridge Single Coil', 80, 320, singlePickupParams),
-    component('selector', 'toggle', 'Selector 3 posiciones', 330, 220, { positions: 3 }),
-    component('potentiometer', 'volume', 'Master Volume 250k', 560, 140),
-    component('potentiometer', 'tone', 'Master Tone 250k', 560, 300),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 760, 320),
-    component('mono_jack', 'jack', 'Output Jack', 930, 140),
-    component('ground', 'ground', 'Ground', 760, 450),
-  ]
-  const baseConnections = [
-    wire('neck-hot-toggle', 'neck', 'hot', 'toggle', 'neck'),
-    wire('bridge-hot-toggle', 'bridge', 'hot', 'toggle', 'bridge'),
-    wire('toggle-common-volume-in', 'toggle', 'common', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundSingleCoil('neck', 'neck'),
-    ...groundSingleCoil('bridge', 'bridge'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    threePositionTogglePosition('ss-master-pos-1', 1, 'Neck', ['neck']),
-    threePositionTogglePosition('ss-master-pos-2', 2, 'Neck + Bridge', ['neck', 'bridge']),
-    threePositionTogglePosition('ss-master-pos-3', 3, 'Bridge', ['bridge']),
-  ]
+function sVolTrebleBleedParallelJack(): CircuitPreset {
+  const preset = sVolJack(
+    's-vol-treble-bleed-parallel-jack',
+    'S - Vol (treble bleed paralelo) - Jack',
+  )
 
   return {
-    id: 'ss-3-position-volume-tone',
-    name: '06 SS - Vol/Tono',
-    category: 'two_pickups',
-    description: 'SS con selector toggle de 3 posiciones, volumen maestro, tono maestro y jack.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
+    ...preset,
+    description: 'Volumen con capacitor y resistencia treble bleed en paralelo.',
+    components: [
+      ...preset.components,
+      component('capacitor', 'bleed-cap', 'Treble bleed cap', 330, 300, {
+        capacitanceFarads: 1e-9,
+      }),
+      component('resistor', 'bleed-resistor', 'Treble bleed resistor', 520, 300, {
+        resistanceOhms: 150000,
+      }),
+    ],
+    connections: [
+      ...preset.connections,
+      wire('bleed-cap-a-volume-in', 'volume', 'in', 'bleed-cap', 'a'),
+      wire('bleed-cap-b-volume-out', 'bleed-cap', 'b', 'volume', 'out'),
+      wire('bleed-resistor-a-volume-in', 'volume', 'in', 'bleed-resistor', 'a'),
+      wire('bleed-resistor-b-volume-out', 'bleed-resistor', 'b', 'volume', 'out'),
+    ],
   }
 }
 
-function ssThreePositionTwoVolumesTwoTones(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Single Coil', 80, 120, singlePickupParams),
-    component('pickup', 'bridge', 'Bridge Single Coil', 80, 320, singlePickupParams),
-    component('potentiometer', 'neck-volume', 'Neck Volume 250k', 330, 90),
-    component('potentiometer', 'bridge-volume', 'Bridge Volume 250k', 330, 290),
-    component('potentiometer', 'neck-tone', 'Neck Tone 250k', 530, 130),
-    component('potentiometer', 'bridge-tone', 'Bridge Tone 250k', 530, 330),
-    component('capacitor', 'neck-cap', 'Neck Tone Cap 22nF', 700, 160),
-    component('capacitor', 'bridge-cap', 'Bridge Tone Cap 22nF', 700, 360),
-    component('selector', 'toggle', 'Selector 3 posiciones', 760, 250, { positions: 3 }),
-    component('mono_jack', 'jack', 'Output Jack', 980, 250),
-    component('ground', 'ground', 'Ground', 760, 500),
-  ]
-  const baseConnections = [
-    wire('neck-hot-volume-in', 'neck', 'hot', 'neck-volume', 'in'),
-    wire('bridge-hot-volume-in', 'bridge', 'hot', 'bridge-volume', 'in'),
-    wire('neck-volume-toggle', 'neck-volume', 'out', 'toggle', 'neck'),
-    wire('bridge-volume-toggle', 'bridge-volume', 'out', 'toggle', 'bridge'),
-    wire('toggle-common-jack-tip', 'toggle', 'common', 'jack', 'tip'),
-    wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
-    wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundSingleCoil('neck', 'neck'),
-    ...groundSingleCoil('bridge', 'bridge'),
-    ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
-    ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
-  ]
-  const switchPositions = [
-    threePositionTogglePosition('ss-2v2t-pos-1', 1, 'Neck', ['neck']),
-    threePositionTogglePosition('ss-2v2t-pos-2', 2, 'Neck + Bridge', ['neck', 'bridge']),
-    threePositionTogglePosition('ss-2v2t-pos-3', 3, 'Bridge', ['bridge']),
-  ]
+function sVolToneJack(): CircuitPreset {
+  return makePreset(
+    's-vol-tone-jack',
+    'S - Vol - Tono - Jack',
+    'one_pickup',
+    'Single coil con volumen, tono moderno y jack.',
+    [
+      component('pickup', 'pickup', 'Single coil', 80, 130, singlePickupParams),
+      component('potentiometer', 'volume', 'Volumen 250k', 330, 100, volume250kParams),
+      component('potentiometer', 'tone', 'Tono 250k', 330, 260, tone250kParams),
+      component('capacitor', 'tone-cap', 'Condensador tono 22nF', 530, 280, toneCapParams),
+      ...jackAndGround(720, 120),
+    ],
+    [
+      wire('pickup-hot-volume-in', 'pickup', 'hot', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
+      ...singleGround('pickup', 'pickup'),
+      ...jackGroundConnections(),
+    ],
+  )
+}
+
+function sVolTone50sJack(): CircuitPreset {
+  const preset = sVolToneJack()
 
   return {
-    id: 'ss-3-position-2v2t',
-    name: '07 SS - 2 Vol/2 Tono',
-    category: 'two_pickups',
-    description: 'SS con selector toggle de 3 posiciones, 2 volumenes, 2 tonos y jack.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
+    ...preset,
+    id: 's-vol-tone-50s-jack',
+    name: 'S - Vol - Tono 50s - Jack',
+    description: 'Single coil con tono conectado a la salida del volumen al estilo 50s.',
+    connections: [
+      ...preset.connections.filter((connection) => !connection.id.startsWith('tone-')),
+      ...toneNetwork('tone', 'volume', 'out', 'tone', 'tone-cap'),
+    ],
   }
 }
 
-function hhThreePositionStandard(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Humbucker', 80, 120, humbucker4Params),
-    component('pickup', 'bridge', 'Bridge Humbucker', 80, 320, humbucker4Params),
-    component('potentiometer', 'neck-volume', 'Neck Volume 500k', 330, 90, { resistanceOhms: 500000 }),
-    component('potentiometer', 'bridge-volume', 'Bridge Volume 500k', 330, 290, { resistanceOhms: 500000 }),
-    component('potentiometer', 'neck-tone', 'Neck Tone 500k', 530, 130, { resistanceOhms: 500000 }),
-    component('potentiometer', 'bridge-tone', 'Bridge Tone 500k', 530, 330, { resistanceOhms: 500000 }),
-    component('capacitor', 'neck-cap', 'Neck Tone Cap 22nF', 700, 160),
-    component('capacitor', 'bridge-cap', 'Bridge Tone Cap 22nF', 700, 360),
-    component('selector', 'toggle', 'Selector 3 posiciones', 760, 250, { positions: 3 }),
-    component('mono_jack', 'jack', 'Output Jack', 980, 250),
-    component('ground', 'ground', 'Ground', 760, 500),
-  ]
-  const baseConnections = [
-    wire('neck-hot-volume-in', 'neck', 'north_start', 'neck-volume', 'in'),
-    wire('bridge-hot-volume-in', 'bridge', 'north_start', 'bridge-volume', 'in'),
-    wire('neck-volume-toggle', 'neck-volume', 'out', 'toggle', 'neck'),
-    wire('bridge-volume-toggle', 'bridge-volume', 'out', 'toggle', 'bridge'),
-    wire('toggle-common-jack-tip', 'toggle', 'common', 'jack', 'tip'),
-    wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
-    wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...groundHumbucker('neck', 'neck'),
-    ...groundHumbucker('bridge', 'bridge'),
-    ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
-    ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
-  ]
-  const switchPositions = [
-    threePositionTogglePosition('hh-pos-1', 1, 'Neck', ['neck']),
-    threePositionTogglePosition('hh-pos-2', 2, 'Neck + Bridge', ['neck', 'bridge']),
-    threePositionTogglePosition('hh-pos-3', 3, 'Bridge', ['bridge']),
-  ]
+function hSplitSingleBothJack(): CircuitPreset {
+  return makePreset(
+    'h-split-s-b-jack',
+    'H - Split S/B - Jack',
+    'one_pickup',
+    'Humbucker con SPDT para seleccionar single o ambas bobinas.',
+    [
+      component('pickup', 'humbucker', 'Humbucker', 80, 150, humbucker4Params),
+      component('switch', 'split-switch', 'Split S/B', 340, 160, { kind: 'SPDT', mode: 'on_on' }),
+      ...jackAndGround(610, 140),
+    ],
+    [
+      wire('north-start-jack-tip', 'humbucker', 'north_start', 'jack', 'tip'),
+      wire('north-finish-switch-common', 'humbucker', 'north_finish', 'split-switch', 'common'),
+      wire('south-start-switch-throw-a', 'humbucker', 'south_start', 'split-switch', 'throw_a'),
+      wire('split-throw-b-ground', 'split-switch', 'throw_b', 'ground', 'ground'),
+      wire('south-finish-ground', 'humbucker', 'south_finish', 'ground', 'ground'),
+      wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
+      ...jackGroundConnections(),
+    ],
+    [
+      {
+        id: 'h-split-single',
+        switchId: 'split-switch',
+        label: 'S',
+        position: 1,
+        activeConnections: [
+          wire('split-single-common-ground', 'split-switch', 'common', 'split-switch', 'throw_b'),
+        ],
+      },
+      {
+        id: 'h-split-both',
+        switchId: 'split-switch',
+        label: 'B',
+        position: 2,
+        activeConnections: [
+          wire('split-both-series-link', 'split-switch', 'common', 'split-switch', 'throw_a'),
+        ],
+      },
+    ],
+  )
+}
+
+function hSplitNorthBothSouthJack(): CircuitPreset {
+  return makePreset(
+    'h-split-n-b-s-jack',
+    'H - Split N/B/S - Jack',
+    'one_pickup',
+    'Humbucker con selector para bobina norte, ambas o bobina sur.',
+    [
+      component('pickup', 'humbucker', 'Humbucker', 80, 160, humbucker4Params),
+      component('selector', 'coil-selector', 'Selector N/B/S', 340, 160, { kind: 'toggle_3' }),
+      ...jackAndGround(620, 140),
+    ],
+    [
+      wire('north-start-selector', 'humbucker', 'north_start', 'coil-selector', 'neck'),
+      wire('south-start-selector', 'humbucker', 'south_start', 'coil-selector', 'bridge'),
+      wire('selector-common-jack-tip', 'coil-selector', 'common', 'jack', 'tip'),
+      wire('south-finish-ground', 'humbucker', 'south_finish', 'ground', 'ground'),
+      wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
+      ...jackGroundConnections(),
+    ],
+    [
+      {
+        id: 'h-north',
+        switchId: 'coil-selector',
+        label: 'N',
+        position: 1,
+        activeConnections: [
+          wire('north-to-output', 'coil-selector', 'neck', 'coil-selector', 'common'),
+          wire('north-finish-ground', 'humbucker', 'north_finish', 'ground', 'ground'),
+        ],
+      },
+      {
+        id: 'h-both',
+        switchId: 'coil-selector',
+        label: 'B',
+        position: 2,
+        activeConnections: [
+          wire('both-north-to-output', 'coil-selector', 'neck', 'coil-selector', 'common'),
+          wire('both-series-link', 'humbucker', 'north_finish', 'humbucker', 'south_start'),
+        ],
+      },
+      {
+        id: 'h-south',
+        switchId: 'coil-selector',
+        label: 'S',
+        position: 3,
+        activeConnections: [
+          wire('south-to-output', 'coil-selector', 'bridge', 'coil-selector', 'common'),
+        ],
+      },
+    ],
+  )
+}
+
+function hSeriesParallelJack(): CircuitPreset {
+  return makePreset(
+    'h-series-parallel-jack',
+    'H - serie/paralelo - Jack',
+    'one_pickup',
+    'Humbucker de 4 conductores con DPDT para serie o paralelo.',
+    [
+      component('pickup', 'humbucker', 'Humbucker', 80, 160, humbucker4Params),
+      component('switch', 'mode-switch', 'Serie/paralelo DPDT', 340, 160, {
+        kind: 'DPDT',
+        mode: 'on_on',
+      }),
+      ...jackAndGround(640, 140),
+    ],
+    [
+      wire('north-start-switch-a-common', 'humbucker', 'north_start', 'mode-switch', 'pole_a_common'),
+      wire('south-start-switch-b-common', 'humbucker', 'south_start', 'mode-switch', 'pole_b_common'),
+      wire('north-finish-switch-a-throw-b', 'humbucker', 'north_finish', 'mode-switch', 'pole_a_throw_b'),
+      wire('south-finish-switch-b-throw-b', 'humbucker', 'south_finish', 'mode-switch', 'pole_b_throw_b'),
+      wire('switch-a-throw-a-jack-tip', 'mode-switch', 'pole_a_throw_a', 'jack', 'tip'),
+      wire('switch-b-throw-a-jack-tip', 'mode-switch', 'pole_b_throw_a', 'jack', 'tip'),
+      wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
+      ...jackGroundConnections(),
+    ],
+    [
+      {
+        id: 'h-series',
+        switchId: 'mode-switch',
+        label: 'Serie',
+        position: 1,
+        activeConnections: [
+          wire('series-north-output', 'mode-switch', 'pole_a_common', 'mode-switch', 'pole_a_throw_a'),
+          wire('series-link', 'mode-switch', 'pole_a_throw_b', 'mode-switch', 'pole_b_common'),
+          wire('series-south-ground', 'mode-switch', 'pole_b_throw_b', 'ground', 'ground'),
+        ],
+      },
+      {
+        id: 'h-parallel',
+        switchId: 'mode-switch',
+        label: 'Paralelo',
+        position: 2,
+        activeConnections: [
+          wire('parallel-north-output', 'mode-switch', 'pole_a_common', 'mode-switch', 'pole_a_throw_a'),
+          wire('parallel-south-output', 'mode-switch', 'pole_b_common', 'mode-switch', 'pole_b_throw_a'),
+          wire('parallel-north-ground', 'mode-switch', 'pole_a_throw_b', 'ground', 'ground'),
+          wire('parallel-south-ground', 'mode-switch', 'pole_b_throw_b', 'ground', 'ground'),
+        ],
+      },
+    ],
+  )
+}
+
+function ssSelectorVolToneJack(): CircuitPreset {
+  return makePreset(
+    'ss-selector-vol-tone-jack',
+    'SS - Selector - Vol - Tono - Jack',
+    'two_pickups',
+    'Dos single coil con selector, volumen maestro, tono maestro y jack.',
+    [
+      component('pickup', 'neck', 'Mastil single coil', 80, 120, singlePickupParams),
+      component('pickup', 'bridge', 'Puente single coil', 80, 320, singlePickupParams),
+      component('selector', 'toggle', 'Selector 3 posiciones', 330, 220, { kind: 'toggle_3' }),
+      component('potentiometer', 'volume', 'Volumen 250k', 560, 140, volume250kParams),
+      component('potentiometer', 'tone', 'Tono 250k', 560, 300, tone250kParams),
+      component('capacitor', 'tone-cap', 'Condensador tono 22nF', 760, 320, toneCapParams),
+      ...jackAndGround(940, 140),
+    ],
+    [
+      wire('neck-hot-toggle', 'neck', 'hot', 'toggle', 'neck'),
+      wire('bridge-hot-toggle', 'bridge', 'hot', 'toggle', 'bridge'),
+      wire('toggle-common-volume-in', 'toggle', 'common', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
+      ...singleGround('neck', 'neck'),
+      ...singleGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      threePositionSelectorPosition('ss-neck', 'toggle', 1, 'Mastil', ['neck']),
+      threePositionSelectorPosition('ss-both', 'toggle', 2, 'Mastil + Puente', ['neck', 'bridge']),
+      threePositionSelectorPosition('ss-bridge', 'toggle', 3, 'Puente', ['bridge']),
+    ],
+  )
+}
+
+function ssTwoVolTwoToneSelectorJack(): CircuitPreset {
+  return makePreset(
+    'ss-2vol-2tone-selector-jack',
+    'SS - 2 Vol(indeps) - 2 Tono(indeps) - Selector - Jack',
+    'two_pickups',
+    'Dos single coil con volumen y tono independientes antes del selector.',
+    [
+      component('pickup', 'neck', 'Mastil single coil', 80, 100, singlePickupParams),
+      component('pickup', 'bridge', 'Puente single coil', 80, 340, singlePickupParams),
+      component('potentiometer', 'neck-volume', 'Volumen mastil 250k', 320, 80, volume250kParams),
+      component('potentiometer', 'bridge-volume', 'Volumen puente 250k', 320, 320, volume250kParams),
+      component('potentiometer', 'neck-tone', 'Tono mastil 250k', 540, 120, tone250kParams),
+      component('potentiometer', 'bridge-tone', 'Tono puente 250k', 540, 360, tone250kParams),
+      component('capacitor', 'neck-cap', 'Condensador mastil 22nF', 740, 140, toneCapParams),
+      component('capacitor', 'bridge-cap', 'Condensador puente 22nF', 740, 380, toneCapParams),
+      component('selector', 'toggle', 'Selector 3 posiciones', 820, 250, { kind: 'toggle_3' }),
+      ...jackAndGround(1060, 250),
+    ],
+    [
+      wire('neck-hot-neck-volume-in', 'neck', 'hot', 'neck-volume', 'in'),
+      wire('bridge-hot-bridge-volume-in', 'bridge', 'hot', 'bridge-volume', 'in'),
+      wire('neck-volume-toggle', 'neck-volume', 'out', 'toggle', 'neck'),
+      wire('bridge-volume-toggle', 'bridge-volume', 'out', 'toggle', 'bridge'),
+      wire('toggle-common-jack-tip', 'toggle', 'common', 'jack', 'tip'),
+      wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
+      wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
+      ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
+      ...singleGround('neck', 'neck'),
+      ...singleGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      threePositionSelectorPosition('ss-2v2t-neck', 'toggle', 1, 'Mastil', ['neck']),
+      threePositionSelectorPosition('ss-2v2t-both', 'toggle', 2, 'Mastil + Puente', [
+        'neck',
+        'bridge',
+      ]),
+      threePositionSelectorPosition('ss-2v2t-bridge', 'toggle', 3, 'Puente', ['bridge']),
+    ],
+  )
+}
+
+function hhSelectorVolToneJack(): CircuitPreset {
+  return makePreset(
+    'hh-selector-vol-tone-jack',
+    'HH - Selector - Vol - Tono - Jack',
+    'two_pickups',
+    'Dos humbuckers en serie interna con selector, volumen maestro y tono maestro.',
+    [
+      component('pickup', 'neck', 'Mastil humbucker', 80, 120, humbucker4Params),
+      component('pickup', 'bridge', 'Puente humbucker', 80, 320, humbucker4Params),
+      component('selector', 'toggle', 'Selector 3 posiciones', 330, 220, { kind: 'toggle_3' }),
+      component('potentiometer', 'volume', 'Volumen 500k', 560, 140, volume500kParams),
+      component('potentiometer', 'tone', 'Tono 500k', 560, 300, tone500kParams),
+      component('capacitor', 'tone-cap', 'Condensador tono 22nF', 760, 320, toneCapParams),
+      ...jackAndGround(940, 140),
+    ],
+    [
+      wire('neck-hot-toggle', 'neck', 'north_start', 'toggle', 'neck'),
+      wire('bridge-hot-toggle', 'bridge', 'north_start', 'toggle', 'bridge'),
+      wire('toggle-common-volume-in', 'toggle', 'common', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
+      ...humbuckerSeriesGround('neck', 'neck'),
+      ...humbuckerSeriesGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      threePositionSelectorPosition('hh-neck', 'toggle', 1, 'Mastil', ['neck']),
+      threePositionSelectorPosition('hh-both', 'toggle', 2, 'Mastil + Puente', ['neck', 'bridge']),
+      threePositionSelectorPosition('hh-bridge', 'toggle', 3, 'Puente', ['bridge']),
+    ],
+  )
+}
+
+function hhTwoVolTwoToneSelectorJack(): CircuitPreset {
+  return makePreset(
+    'hh-2vol-2tone-selector-jack',
+    'HH - 2 Vol(indeps) - 2 Tono (indeps) - Selector - Jack',
+    'two_pickups',
+    'Dos humbuckers con volumen y tono independientes antes del selector.',
+    [
+      component('pickup', 'neck', 'Mastil humbucker', 80, 100, humbucker4Params),
+      component('pickup', 'bridge', 'Puente humbucker', 80, 340, humbucker4Params),
+      component('potentiometer', 'neck-volume', 'Volumen mastil 500k', 320, 80, volume500kParams),
+      component('potentiometer', 'bridge-volume', 'Volumen puente 500k', 320, 320, volume500kParams),
+      component('potentiometer', 'neck-tone', 'Tono mastil 500k', 540, 120, tone500kParams),
+      component('potentiometer', 'bridge-tone', 'Tono puente 500k', 540, 360, tone500kParams),
+      component('capacitor', 'neck-cap', 'Condensador mastil 22nF', 740, 140, toneCapParams),
+      component('capacitor', 'bridge-cap', 'Condensador puente 22nF', 740, 380, toneCapParams),
+      component('selector', 'toggle', 'Selector 3 posiciones', 820, 250, { kind: 'toggle_3' }),
+      ...jackAndGround(1060, 250),
+    ],
+    [
+      wire('neck-hot-neck-volume-in', 'neck', 'north_start', 'neck-volume', 'in'),
+      wire('bridge-hot-bridge-volume-in', 'bridge', 'north_start', 'bridge-volume', 'in'),
+      wire('neck-volume-toggle', 'neck-volume', 'out', 'toggle', 'neck'),
+      wire('bridge-volume-toggle', 'bridge-volume', 'out', 'toggle', 'bridge'),
+      wire('toggle-common-jack-tip', 'toggle', 'common', 'jack', 'tip'),
+      wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
+      wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
+      ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
+      ...humbuckerSeriesGround('neck', 'neck'),
+      ...humbuckerSeriesGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      threePositionSelectorPosition('hh-2v2t-neck', 'toggle', 1, 'Mastil', ['neck']),
+      threePositionSelectorPosition('hh-2v2t-both', 'toggle', 2, 'Mastil + Puente', [
+        'neck',
+        'bridge',
+      ]),
+      threePositionSelectorPosition('hh-2v2t-bridge', 'toggle', 3, 'Puente', ['bridge']),
+    ],
+  )
+}
+
+function sssSelectorVolToneJack(): CircuitPreset {
+  return makePreset(
+    'sss-selector-vol-tone-jack',
+    'SSS - Selector - Vol - Tono - Jack',
+    'three_pickups',
+    'Tres single coil con selector de 5 posiciones, volumen y tono maestro.',
+    [
+      component('pickup', 'neck', 'Mastil single coil', 80, 80, singlePickupParams),
+      component('pickup', 'middle', 'Medio single coil', 80, 230, singlePickupParams),
+      component('pickup', 'bridge', 'Puente single coil', 80, 380, singlePickupParams),
+      component('selector', 'selector', 'Selector 5 posiciones', 350, 230, { kind: 'blade_5' }),
+      component('potentiometer', 'volume', 'Volumen 250k', 580, 140, volume250kParams),
+      component('potentiometer', 'tone', 'Tono 250k', 580, 300, tone250kParams),
+      component('capacitor', 'tone-cap', 'Condensador tono 22nF', 780, 320, toneCapParams),
+      ...jackAndGround(960, 140),
+    ],
+    [
+      wire('neck-hot-selector', 'neck', 'hot', 'selector', 'neck'),
+      wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
+      wire('bridge-hot-selector', 'bridge', 'hot', 'selector', 'bridge'),
+      wire('selector-common-volume-in', 'selector', 'common', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
+      ...singleGround('neck', 'neck'),
+      ...singleGround('middle', 'middle'),
+      ...singleGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      fivePositionSelectorPosition('sss-bridge', 1, 'Puente', ['bridge']),
+      fivePositionSelectorPosition('sss-bridge-middle', 2, 'Puente + Medio', ['bridge', 'middle']),
+      fivePositionSelectorPosition('sss-middle', 3, 'Medio', ['middle']),
+      fivePositionSelectorPosition('sss-middle-neck', 4, 'Medio + Mastil', ['middle', 'neck']),
+      fivePositionSelectorPosition('sss-neck', 5, 'Mastil', ['neck']),
+    ],
+  )
+}
+
+function sssTwoToneSelectorVolJack(): CircuitPreset {
+  const preset = sssSelectorVolToneJack()
 
   return {
-    id: 'hh-3-position-standard',
-    name: '09 HH - 2 Vol/2 Tono',
-    category: 'two_pickups',
-    description: 'HH con selector toggle de 3 posiciones, 2 volumenes, 2 tonos y jack.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
+    ...preset,
+    id: 'sss-2tone-selector-vol-jack',
+    name: 'SSS - 2 Tono (indeps) - Selector - vol - Jack',
+    description: 'Tres single coil con dos tonos independientes y volumen maestro despues del selector.',
+    components: [
+      component('pickup', 'neck', 'Mastil single coil', 80, 80, singlePickupParams),
+      component('pickup', 'middle', 'Medio single coil', 80, 230, singlePickupParams),
+      component('pickup', 'bridge', 'Puente single coil', 80, 380, singlePickupParams),
+      component('selector', 'selector', 'Selector 5 posiciones', 350, 230, { kind: 'blade_5' }),
+      component('potentiometer', 'volume', 'Volumen 250k', 580, 140, volume250kParams),
+      component('potentiometer', 'neck-tone', 'Tono mastil 250k', 580, 300, tone250kParams),
+      component('potentiometer', 'middle-tone', 'Tono medio 250k', 580, 440, tone250kParams),
+      component('capacitor', 'neck-cap', 'Condensador mastil 22nF', 780, 320, toneCapParams),
+      component('capacitor', 'middle-cap', 'Condensador medio 22nF', 780, 460, toneCapParams),
+      ...jackAndGround(960, 140),
+    ],
+    connections: [
+      wire('neck-hot-selector', 'neck', 'hot', 'selector', 'neck'),
+      wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
+      wire('bridge-hot-selector', 'bridge', 'hot', 'selector', 'bridge'),
+      wire('selector-common-volume-in', 'selector', 'common', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('neck-tone', 'selector', 'neck', 'neck-tone', 'neck-cap'),
+      ...toneNetwork('middle-tone', 'selector', 'middle', 'middle-tone', 'middle-cap'),
+      ...singleGround('neck', 'neck'),
+      ...singleGround('middle', 'middle'),
+      ...singleGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
   }
 }
 
-function hhThreePositionVolumeTone(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Humbucker', 80, 120, humbucker4Params),
-    component('pickup', 'bridge', 'Bridge Humbucker', 80, 320, humbucker4Params),
-    component('selector', 'toggle', 'Selector 3 posiciones', 330, 220, { positions: 3 }),
-    component('potentiometer', 'volume', 'Master Volume 500k', 560, 140, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Master Tone 500k', 560, 300, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 760, 320),
-    component('mono_jack', 'jack', 'Output Jack', 930, 140),
-    component('ground', 'ground', 'Ground', 760, 450),
-  ]
-  const baseConnections = [
-    wire('neck-hot-toggle', 'neck', 'north_start', 'toggle', 'neck'),
-    wire('bridge-hot-toggle', 'bridge', 'north_start', 'toggle', 'bridge'),
-    wire('toggle-common-volume-in', 'toggle', 'common', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...seriesHumbuckerGround('neck', 'neck'),
-    ...seriesHumbuckerGround('bridge', 'bridge'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    threePositionTogglePosition('hh-master-pos-1', 1, 'Neck', ['neck']),
-    threePositionTogglePosition('hh-master-pos-2', 2, 'Neck + Bridge', ['neck', 'bridge']),
-    threePositionTogglePosition('hh-master-pos-3', 3, 'Bridge', ['bridge']),
-  ]
-
-  return {
-    id: 'hh-3-position-volume-tone',
-    name: '08 HH - Vol/Tono',
-    category: 'two_pickups',
-    description: 'HH con selector toggle de 3 posiciones, volumen maestro, tono maestro y jack.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
+function sssTwoVolTwoToneSelectorJack(): CircuitPreset {
+  return makePreset(
+    'sss-2vol-2tone-selector-jack',
+    'SSS - 2 Vol(indeps) - 2 Tono (indeps) - Selector - Jack',
+    'three_pickups',
+    'Tres single coil con volumen y tono independientes para mastil y puente.',
+    [
+      component('pickup', 'neck', 'Mastil single coil', 80, 80, singlePickupParams),
+      component('pickup', 'middle', 'Medio single coil', 80, 240, singlePickupParams),
+      component('pickup', 'bridge', 'Puente single coil', 80, 400, singlePickupParams),
+      component('potentiometer', 'neck-volume', 'Volumen mastil 250k', 320, 70, volume250kParams),
+      component('potentiometer', 'bridge-volume', 'Volumen puente 250k', 320, 380, volume250kParams),
+      component('selector', 'selector', 'Selector 5 posiciones', 560, 240, { kind: 'blade_5' }),
+      component('potentiometer', 'neck-tone', 'Tono mastil 250k', 760, 100, tone250kParams),
+      component('potentiometer', 'bridge-tone', 'Tono puente 250k', 760, 400, tone250kParams),
+      component('capacitor', 'neck-cap', 'Condensador mastil 22nF', 950, 120, toneCapParams),
+      component('capacitor', 'bridge-cap', 'Condensador puente 22nF', 950, 420, toneCapParams),
+      ...jackAndGround(1100, 250),
+    ],
+    [
+      wire('neck-hot-neck-volume-in', 'neck', 'hot', 'neck-volume', 'in'),
+      wire('neck-volume-selector', 'neck-volume', 'out', 'selector', 'neck'),
+      wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
+      wire('bridge-hot-bridge-volume-in', 'bridge', 'hot', 'bridge-volume', 'in'),
+      wire('bridge-volume-selector', 'bridge-volume', 'out', 'selector', 'bridge'),
+      wire('selector-common-jack-tip', 'selector', 'common', 'jack', 'tip'),
+      wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
+      wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
+      ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
+      ...singleGround('neck', 'neck'),
+      ...singleGround('middle', 'middle'),
+      ...singleGround('bridge', 'bridge'),
+      ...jackGroundConnections(),
+    ],
+    [
+      fivePositionSelectorPosition('sss-2v2t-bridge', 1, 'Puente', ['bridge']),
+      fivePositionSelectorPosition('sss-2v2t-bridge-middle', 2, 'Puente + Medio', [
+        'bridge',
+        'middle',
+      ]),
+      fivePositionSelectorPosition('sss-2v2t-middle', 3, 'Medio', ['middle']),
+      fivePositionSelectorPosition('sss-2v2t-middle-neck', 4, 'Medio + Mastil', [
+        'middle',
+        'neck',
+      ]),
+      fivePositionSelectorPosition('sss-2v2t-neck', 5, 'Mastil', ['neck']),
+    ],
+  )
 }
 
-function threePositionTogglePosition(
-  id: string,
-  position: number,
-  label: string,
-  throws: Array<'neck' | 'bridge'>,
-): PresetSwitchPosition {
-  return {
-    id,
-    switchId: 'toggle',
-    label: localizePositionLabel(label),
-    position,
-    activeConnections: throws.map((throwId) =>
-      wire(`${id}-${throwId}-to-common`, 'toggle', throwId, 'toggle', 'common'),
-    ),
-  }
+function ptbTrebleCutBassCut(): CircuitPreset {
+  return makePreset(
+    'ptb-treble-cut-bass-cut',
+    'PTB: treble cut + bass cut',
+    'one_pickup',
+    'Circuito PTB conceptual con corte de agudos y corte de graves pasivos.',
+    [
+      component('pickup', 'pickup', 'Single coil', 80, 160, singlePickupParams),
+      component('capacitor', 'bass-cap', 'Bass cut cap', 280, 140, bassCapParams),
+      component('potentiometer', 'bass-cut', 'Bass cut 1M', 460, 140, {
+        resistanceOhms: 1000000,
+        taper: 'audio',
+        position: 1,
+      }),
+      component('potentiometer', 'volume', 'Volumen 250k', 650, 140, volume250kParams),
+      component('potentiometer', 'treble-cut', 'Treble cut 250k', 650, 320, tone250kParams),
+      component('capacitor', 'treble-cap', 'Treble cap 22nF', 850, 340, toneCapParams),
+      ...jackAndGround(1040, 140),
+    ],
+    [
+      wire('pickup-hot-bass-cap-a', 'pickup', 'hot', 'bass-cap', 'a'),
+      wire('bass-cap-b-bass-cut-in', 'bass-cap', 'b', 'bass-cut', 'in'),
+      wire('bass-cut-out-volume-in', 'bass-cut', 'out', 'volume', 'in'),
+      wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
+      wire('bass-cut-ground', 'bass-cut', 'ground', 'ground', 'ground'),
+      wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
+      ...toneNetwork('treble-cut', 'volume', 'in', 'treble-cut', 'treble-cap'),
+      ...singleGround('pickup', 'pickup'),
+      ...jackGroundConnections(),
+    ],
+  )
 }
 
-function humbuckerSeriesSplitParallel(): CircuitPreset {
-  const components = [
-    component('pickup', 'humbucker', 'Bridge Humbucker', 80, 160, humbucker4Params),
-    component('switch', 'mode-switch', 'Serie / Split / Paralelo DPDT', 340, 180, { kind: 'DPDT', mode: 'on_on_on' }),
-    component('potentiometer', 'volume', 'Volume 500k', 590, 120, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Tone 500k', 590, 280, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 790, 300),
-    component('mono_jack', 'jack', 'Output Jack', 930, 120),
-    component('ground', 'ground', 'Ground', 790, 420),
-  ]
-  const baseConnections = [
-    wire('north-start-switch-common-a', 'humbucker', 'north_start', 'mode-switch', 'pole_a_common'),
-    wire('south-start-switch-common-b', 'humbucker', 'south_start', 'mode-switch', 'pole_b_common'),
-    wire('north-finish-switch-a-throw-b', 'humbucker', 'north_finish', 'mode-switch', 'pole_a_throw_b'),
-    wire('south-finish-switch-b-throw-b', 'humbucker', 'south_finish', 'mode-switch', 'pole_b_throw_b'),
-    wire('switch-a-throw-a-volume', 'mode-switch', 'pole_a_throw_a', 'volume', 'in'),
-    wire('switch-b-throw-a-volume', 'mode-switch', 'pole_b_throw_a', 'volume', 'in'),
-    wire('switch-b-throw-b-ground', 'mode-switch', 'pole_b_throw_b', 'ground', 'ground'),
-    wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    {
-      id: 'humbucker-mode-series',
-      switchId: 'mode-switch',
-      label: 'Series',
-      position: 1,
-      activeConnections: [
-        wire('series-north-hot', 'mode-switch', 'pole_a_common', 'mode-switch', 'pole_a_throw_a'),
-        wire('series-link', 'mode-switch', 'pole_a_throw_b', 'mode-switch', 'pole_b_common'),
-        wire('series-south-ground', 'mode-switch', 'pole_b_throw_b', 'ground', 'ground'),
-      ],
-    },
-    {
-      id: 'humbucker-mode-split',
-      switchId: 'mode-switch',
-      label: 'Split',
-      position: 2,
-      activeConnections: [
-        wire('split-north-hot', 'mode-switch', 'pole_a_common', 'mode-switch', 'pole_a_throw_a'),
-        wire('split-north-ground', 'mode-switch', 'pole_a_throw_b', 'ground', 'ground'),
-      ],
-    },
-    {
-      id: 'humbucker-mode-parallel',
-      switchId: 'mode-switch',
-      label: 'Parallel',
-      position: 3,
-      activeConnections: [
-        wire('parallel-north-hot', 'mode-switch', 'pole_a_common', 'mode-switch', 'pole_a_throw_a'),
-        wire('parallel-south-hot', 'mode-switch', 'pole_b_common', 'mode-switch', 'pole_b_throw_a'),
-        wire('parallel-north-ground', 'mode-switch', 'pole_a_throw_b', 'ground', 'ground'),
-        wire('parallel-south-ground', 'mode-switch', 'pole_b_throw_b', 'ground', 'ground'),
-      ],
-    },
-  ]
+const presetOrder = [
+  's-jack',
+  's-kill-switch-jack',
+  's-phase-switch-jack',
+  's-vol-jack',
+  's-vol-50s-jack',
+  's-vol-treble-bleed-series-jack',
+  's-vol-treble-bleed-parallel-jack',
+  's-vol-tone-jack',
+  's-vol-tone-50s-jack',
+  'h-split-s-b-jack',
+  'h-split-n-b-s-jack',
+  'h-series-parallel-jack',
+  'ss-selector-vol-tone-jack',
+  'ss-2vol-2tone-selector-jack',
+  'hh-selector-vol-tone-jack',
+  'hh-2vol-2tone-selector-jack',
+  'sss-selector-vol-tone-jack',
+  'sss-2tone-selector-vol-jack',
+  'sss-2vol-2tone-selector-jack',
+  'ptb-treble-cut-bass-cut',
+] as const
 
-  return {
-    id: 'humbucker-series-split-parallel',
-    name: '05 HB - Serie/Split/Paralelo',
-    category: 'one_pickup',
-    description: 'Humbucker de 4 conductores con DPDT on/on/on, volumen, tono, jack y tierra.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
+const presetFactories: Record<(typeof presetOrder)[number], PresetFactory> = {
+  's-jack': sJack,
+  's-kill-switch-jack': sKillSwitchJack,
+  's-phase-switch-jack': sPhaseSwitchJack,
+  's-vol-jack': () => sVolJack(),
+  's-vol-50s-jack': sVol50sJack,
+  's-vol-treble-bleed-series-jack': sVolTrebleBleedSeriesJack,
+  's-vol-treble-bleed-parallel-jack': sVolTrebleBleedParallelJack,
+  's-vol-tone-jack': sVolToneJack,
+  's-vol-tone-50s-jack': sVolTone50sJack,
+  'h-split-s-b-jack': hSplitSingleBothJack,
+  'h-split-n-b-s-jack': hSplitNorthBothSouthJack,
+  'h-series-parallel-jack': hSeriesParallelJack,
+  'ss-selector-vol-tone-jack': ssSelectorVolToneJack,
+  'ss-2vol-2tone-selector-jack': ssTwoVolTwoToneSelectorJack,
+  'hh-selector-vol-tone-jack': hhSelectorVolToneJack,
+  'hh-2vol-2tone-selector-jack': hhTwoVolTwoToneSelectorJack,
+  'sss-selector-vol-tone-jack': sssSelectorVolToneJack,
+  'sss-2tone-selector-vol-jack': sssTwoToneSelectorVolJack,
+  'sss-2vol-2tone-selector-jack': sssTwoVolTwoToneSelectorJack,
+  'ptb-treble-cut-bass-cut': ptbTrebleCutBassCut,
 }
 
-function humbuckerSplitSingleBoth(): CircuitPreset {
-  const components = [
-    component('pickup', 'humbucker', 'Bridge Humbucker', 80, 150, humbucker4Params),
-    component('switch', 'split-switch', 'Simple / Ambas SPDT', 340, 170, { kind: 'SPDT', mode: 'on_on' }),
-    component('potentiometer', 'volume', 'Volume 500k', 580, 120, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Tone 500k', 580, 280, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 780, 300),
-    component('mono_jack', 'jack', 'Output Jack', 930, 120),
-    component('ground', 'ground', 'Ground', 780, 430),
-  ]
-  const baseConnections = [
-    wire('north-start-volume-in', 'humbucker', 'north_start', 'volume', 'in'),
-    wire('north-finish-switch-common', 'humbucker', 'north_finish', 'split-switch', 'common'),
-    wire('south-start-switch-series', 'humbucker', 'south_start', 'split-switch', 'throw_a'),
-    wire('split-switch-ground', 'split-switch', 'throw_b', 'ground', 'ground'),
-    wire('south-finish-ground', 'humbucker', 'south_finish', 'ground', 'ground'),
-    wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    {
-      id: 'hb-single-both-single',
-      switchId: 'split-switch',
-      label: 'Single Coil',
-      position: 1,
-      activeConnections: [
-        wire('single-north-finish-ground', 'split-switch', 'common', 'split-switch', 'throw_b'),
-      ],
-    },
-    {
-      id: 'hb-single-both-both',
-      switchId: 'split-switch',
-      label: 'Both Coils',
-      position: 2,
-      activeConnections: [
-        wire('both-series-link', 'split-switch', 'common', 'split-switch', 'throw_a'),
-      ],
-    },
-  ]
-
-  return {
-    id: 'humbucker-split-single-both',
-    name: '03 HB - Split simple/ambas',
-    category: 'one_pickup',
-    description: 'Humbucker con SPDT para alternar entre una bobina y ambas bobinas en serie.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
-}
-
-function humbuckerSplitNorthBothSouth(): CircuitPreset {
-  const components = [
-    component('pickup', 'humbucker', 'Bridge Humbucker', 80, 170, humbucker4Params),
-    component('selector', 'coil-selector', 'Norte / Ambas / Sur', 340, 180, { positions: 3 }),
-    component('potentiometer', 'volume', 'Volume 500k', 580, 120, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Tone 500k', 580, 280, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 780, 300),
-    component('mono_jack', 'jack', 'Output Jack', 930, 120),
-    component('ground', 'ground', 'Ground', 780, 430),
-  ]
-  const baseConnections = [
-    wire('north-start-selector', 'humbucker', 'north_start', 'coil-selector', 'neck'),
-    wire('south-start-selector', 'humbucker', 'south_start', 'coil-selector', 'bridge'),
-    wire('selector-common-volume-in', 'coil-selector', 'common', 'volume', 'in'),
-    wire('south-finish-ground', 'humbucker', 'south_finish', 'ground', 'ground'),
-    wire('shield-ground', 'humbucker', 'shield', 'ground', 'ground'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    {
-      id: 'hb-north-both-south-north',
-      switchId: 'coil-selector',
-      label: 'North',
-      position: 1,
-      activeConnections: [
-        wire('north-to-output', 'coil-selector', 'neck', 'coil-selector', 'common'),
-        wire('north-finish-ground', 'humbucker', 'north_finish', 'ground', 'ground'),
-      ],
-    },
-    {
-      id: 'hb-north-both-south-both',
-      switchId: 'coil-selector',
-      label: 'Both',
-      position: 2,
-      activeConnections: [
-        wire('both-north-to-output', 'coil-selector', 'neck', 'coil-selector', 'common'),
-        wire('both-series-link', 'humbucker', 'north_finish', 'humbucker', 'south_start'),
-      ],
-    },
-    {
-      id: 'hb-north-both-south-south',
-      switchId: 'coil-selector',
-      label: 'South',
-      position: 3,
-      activeConnections: [
-        wire('south-to-output', 'coil-selector', 'bridge', 'coil-selector', 'common'),
-      ],
-    },
-  ]
-
-  return {
-    id: 'humbucker-split-north-both-south',
-    name: '04 HB - Split N/B/S',
-    category: 'one_pickup',
-    description: 'Humbucker con selector de 3 posiciones para norte, ambas bobinas o sur.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
-}
-
-function hshFivePositionStandard(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Humbucker', 80, 80, humbucker4Params),
-    component('pickup', 'middle', 'Middle Single Coil', 80, 230, singlePickupParams),
-    component('pickup', 'bridge', 'Bridge Humbucker', 80, 380, humbucker4Params),
-    component('selector', 'selector', 'Selector 5 posiciones', 360, 230, { positions: 5 }),
-    component('potentiometer', 'volume', 'Volume 500k', 600, 140, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Tone 500k', 600, 300, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 800, 320),
-    component('mono_jack', 'jack', 'Output Jack', 960, 140),
-    component('ground', 'ground', 'Ground', 800, 470),
-  ]
-  const baseConnections = [
-    wire('neck-hot-selector', 'neck', 'north_start', 'selector', 'neck'),
-    wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
-    wire('bridge-hot-selector', 'bridge', 'north_start', 'selector', 'bridge'),
-    wire('selector-common-volume-in', 'selector', 'common', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...seriesHumbuckerGround('neck', 'neck'),
-    ...groundSingleCoil('middle', 'middle'),
-    ...seriesHumbuckerGround('bridge', 'bridge'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    fivePositionSelectorPosition('hsh-pos-1', 1, 'Bridge', ['bridge']),
-    fivePositionSelectorPosition('hsh-pos-2', 2, 'Bridge + Middle', ['bridge', 'middle']),
-    fivePositionSelectorPosition('hsh-pos-3', 3, 'Middle', ['middle']),
-    fivePositionSelectorPosition('hsh-pos-4', 4, 'Middle + Neck', ['middle', 'neck']),
-    fivePositionSelectorPosition('hsh-pos-5', 5, 'Neck', ['neck']),
-  ]
-
-  return {
-    id: 'hsh-5-position-standard',
-    name: '12 HSH - Vol/Tono',
-    category: 'three_pickups',
-    description: 'HSH con selector de 5 posiciones, volumen, tono, condensador, jack y tierra.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
-}
-
-function hshFivePositionTwoVolumesTwoTones(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Humbucker', 80, 80, humbucker4Params),
-    component('pickup', 'middle', 'Middle Single Coil', 80, 240, singlePickupParams),
-    component('pickup', 'bridge', 'Bridge Humbucker', 80, 400, humbucker4Params),
-    component('potentiometer', 'neck-volume', 'Neck Volume 500k', 330, 70, { resistanceOhms: 500000 }),
-    component('potentiometer', 'bridge-volume', 'Bridge Volume 500k', 330, 360, { resistanceOhms: 500000 }),
-    component('selector', 'selector', 'Selector 5 posiciones', 570, 240, { positions: 5 }),
-    component('potentiometer', 'neck-tone', 'Neck Tone 500k', 760, 100, { resistanceOhms: 500000 }),
-    component('potentiometer', 'bridge-tone', 'Bridge Tone 500k', 760, 380, { resistanceOhms: 500000 }),
-    component('capacitor', 'neck-cap', 'Neck Tone Cap 22nF', 940, 120),
-    component('capacitor', 'bridge-cap', 'Bridge Tone Cap 22nF', 940, 400),
-    component('mono_jack', 'jack', 'Output Jack', 1080, 240),
-    component('ground', 'ground', 'Ground', 940, 520),
-  ]
-  const baseConnections = [
-    wire('neck-hot-volume-in', 'neck', 'north_start', 'neck-volume', 'in'),
-    wire('neck-volume-selector', 'neck-volume', 'out', 'selector', 'neck'),
-    wire('middle-hot-selector', 'middle', 'hot', 'selector', 'middle'),
-    wire('bridge-hot-volume-in', 'bridge', 'north_start', 'bridge-volume', 'in'),
-    wire('bridge-volume-selector', 'bridge-volume', 'out', 'selector', 'bridge'),
-    wire('selector-common-jack-tip', 'selector', 'common', 'jack', 'tip'),
-    wire('neck-volume-ground', 'neck-volume', 'ground', 'ground', 'ground'),
-    wire('bridge-volume-ground', 'bridge-volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...seriesHumbuckerGround('neck', 'neck'),
-    ...groundSingleCoil('middle', 'middle'),
-    ...seriesHumbuckerGround('bridge', 'bridge'),
-    ...toneNetwork('neck-tone', 'neck-volume', 'in', 'neck-tone', 'neck-cap'),
-    ...toneNetwork('bridge-tone', 'bridge-volume', 'in', 'bridge-tone', 'bridge-cap'),
-  ]
-  const switchPositions = [
-    fivePositionSelectorPosition('hsh-2v2t-pos-1', 1, 'Bridge', ['bridge']),
-    fivePositionSelectorPosition('hsh-2v2t-pos-2', 2, 'Bridge + Middle', ['bridge', 'middle']),
-    fivePositionSelectorPosition('hsh-2v2t-pos-3', 3, 'Middle', ['middle']),
-    fivePositionSelectorPosition('hsh-2v2t-pos-4', 4, 'Middle + Neck', ['middle', 'neck']),
-    fivePositionSelectorPosition('hsh-2v2t-pos-5', 5, 'Neck', ['neck']),
-  ]
-
-  return {
-    id: 'hsh-5-position-2v2t',
-    name: '13 HSH - 2 Vol/2 Tono',
-    category: 'three_pickups',
-    description: 'HSH con selector de 5 posiciones, volumen y tono independientes para neck y bridge.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
-}
-
-function hhhFivePositionVolumeTone(): CircuitPreset {
-  const components = [
-    component('pickup', 'neck', 'Neck Humbucker', 80, 80, humbucker4Params),
-    component('pickup', 'middle', 'Middle Humbucker', 80, 230, humbucker4Params),
-    component('pickup', 'bridge', 'Bridge Humbucker', 80, 380, humbucker4Params),
-    component('selector', 'selector', 'Selector 5 posiciones', 360, 230, { positions: 5 }),
-    component('potentiometer', 'volume', 'Volume 500k', 600, 140, { resistanceOhms: 500000 }),
-    component('potentiometer', 'tone', 'Tone 500k', 600, 300, { resistanceOhms: 500000 }),
-    component('capacitor', 'tone-cap', 'Tone Cap 22nF', 800, 320),
-    component('mono_jack', 'jack', 'Output Jack', 960, 140),
-    component('ground', 'ground', 'Ground', 800, 470),
-  ]
-  const baseConnections = [
-    wire('neck-hot-selector', 'neck', 'north_start', 'selector', 'neck'),
-    wire('middle-hot-selector', 'middle', 'north_start', 'selector', 'middle'),
-    wire('bridge-hot-selector', 'bridge', 'north_start', 'selector', 'bridge'),
-    wire('selector-common-volume-in', 'selector', 'common', 'volume', 'in'),
-    wire('volume-out-jack-tip', 'volume', 'out', 'jack', 'tip'),
-    wire('volume-ground', 'volume', 'ground', 'ground', 'ground'),
-    wire('jack-sleeve-ground', 'jack', 'sleeve', 'ground', 'ground'),
-    ...seriesHumbuckerGround('neck', 'neck'),
-    ...seriesHumbuckerGround('middle', 'middle'),
-    ...seriesHumbuckerGround('bridge', 'bridge'),
-    ...toneNetwork('tone', 'volume', 'in', 'tone', 'tone-cap'),
-  ]
-  const switchPositions = [
-    fivePositionSelectorPosition('hhh-pos-1', 1, 'Bridge', ['bridge']),
-    fivePositionSelectorPosition('hhh-pos-2', 2, 'Bridge + Middle', ['bridge', 'middle']),
-    fivePositionSelectorPosition('hhh-pos-3', 3, 'Middle', ['middle']),
-    fivePositionSelectorPosition('hhh-pos-4', 4, 'Middle + Neck', ['middle', 'neck']),
-    fivePositionSelectorPosition('hhh-pos-5', 5, 'Neck', ['neck']),
-  ]
-
-  return {
-    id: 'hhh-5-position-volume-tone',
-    name: '14 HHH - Vol/Tono',
-    category: 'three_pickups',
-    description: 'HHH con selector de 5 posiciones, volumen maestro, tono maestro y jack.',
-    components,
-    connections: baseConnections,
-    switchPositions: localizeSwitchPositions(switchPositions),
-  }
-}
-
-const presetFactories: Record<string, PresetFactory> = {
-  'single-pickup-volume-jack': singlePickupVolumeJack,
-  'single-pickup-volume-tone-jack': singlePickupVolumeToneJack,
-  'humbucker-split-single-both': humbuckerSplitSingleBoth,
-  'humbucker-split-north-both-south': humbuckerSplitNorthBothSouth,
-  'humbucker-series-split-parallel': humbuckerSeriesSplitParallel,
-  'ss-3-position-volume-tone': ssThreePositionVolumeTone,
-  'ss-3-position-2v2t': ssThreePositionTwoVolumesTwoTones,
-  'hh-3-position-volume-tone': hhThreePositionVolumeTone,
-  'hh-3-position-standard': hhThreePositionStandard,
-  'sss-5-position-standard': sssFivePositionStandard,
-  'sss-5-position-3-pots': sssFivePositionThreePots,
-  'hsh-5-position-standard': hshFivePositionStandard,
-  'hsh-5-position-2v2t': hshFivePositionTwoVolumesTwoTones,
-  'hhh-5-position-volume-tone': hhhFivePositionVolumeTone,
-}
-
-export const presetLibrary = Object.keys(presetFactories).map((presetId) => {
+export const presetLibrary = presetOrder.map((presetId) => {
   const preset = presetFactories[presetId]()
+
   return {
     id: preset.id,
     name: preset.name,
@@ -869,7 +966,7 @@ export const presetLibrary = Object.keys(presetFactories).map((presetId) => {
 })
 
 export function loadPreset(presetId: string): CircuitPreset {
-  const factory = presetFactories[presetId]
+  const factory = presetFactories[presetId as (typeof presetOrder)[number]]
 
   if (!factory) {
     throw new Error(`Unknown preset: ${presetId}`)

@@ -161,7 +161,7 @@ describe('estimateOutputSignal', () => {
   })
 
   it('lets the string exciter drive a preset that needs selector position connections', () => {
-    const preset = loadPreset('sss-5-position-standard')
+    const preset = loadPreset('sss-selector-vol-tone-jack')
     const components: CircuitComponent[] = [
       createStringExciter({
         id: 'strings',
