@@ -125,7 +125,7 @@ describe('validateCircuit', () => {
     const result = validateCircuit(context(components, connectedPosition, { switchPositions }))
 
     expect(result.bySwitchPosition['selector-position-3'].map((issue) => issue.message)).toContain(
-      'En la posicion 3 del selector, el jack no recibe senal de ninguna pastilla.',
+      'En la posicion 3 del selector, el jack no recibe señal de ninguna pastilla.',
     )
   })
 

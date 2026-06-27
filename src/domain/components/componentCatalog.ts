@@ -229,8 +229,8 @@ export const componentCatalog = [
   },
   {
     id: 'signal_generator',
-    label: 'Generador de senal',
-    description: 'Fuente virtual de senal para pruebas conceptuales de respuesta.',
+    label: 'Generador de señal',
+    description: 'Fuente virtual de señal para pruebas conceptuales de respuesta.',
     category: 'sources',
     type: 'signal_generator',
     defaultParams: {
@@ -240,7 +240,7 @@ export const componentCatalog = [
     },
     factory: createSignalGenerator,
     icon: 'waveform',
-    tags: ['herramienta', 'generador', 'senal', 'fuente'],
+    tags: ['herramienta', 'generador', 'señal', 'fuente'],
   },
   {
     id: 'string_exciter',

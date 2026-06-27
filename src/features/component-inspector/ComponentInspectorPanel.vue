@@ -88,7 +88,7 @@ const componentTypeLabels: Record<string, string> = {
   switch: 'Switch',
   selector: 'Selector',
   oscilloscope_probe: 'Sonda de osciloscopio',
-  signal_generator: 'Generador de senal',
+  signal_generator: 'Generador de señal',
   string_exciter: 'Excitador de cuerdas',
 }
 
@@ -228,7 +228,7 @@ function categoryLabel(category: string): string {
 
 function pinRoleLabel(role: string): string {
   const labels: Record<string, string> = {
-    signal: 'senal',
+    signal: 'señal',
     ground: 'tierra',
     shield: 'malla',
     pickup_coil_start: 'inicio de bobina',
@@ -248,7 +248,7 @@ function pinRoleLabel(role: string): string {
 
 function electricalTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    passive_signal: 'senal pasiva',
+    passive_signal: 'señal pasiva',
     ground_reference: 'referencia a tierra',
     shield_drain: 'drenaje de malla',
     resistive: 'resistivo',

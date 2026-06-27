@@ -221,7 +221,7 @@ export function validateJack(context: ValidationContext): ValidationIssue[] {
         severity: 'warning',
         componentId: jackId,
         pinRef: tip,
-        message: 'jack.tip no recibe senal de ninguna pastilla o fuente. La salida quedara muda.',
+        message: 'jack.tip no recibe señal de ninguna pastilla o fuente. La salida quedara muda.',
       })
     }
   }
@@ -342,7 +342,7 @@ export function validateShortCircuits(context: ValidationContext): ValidationIss
         id: `${electricalNode.id}.signal-ground-short`,
         code: 'signal_ground_short',
         severity: 'error',
-        message: 'Una linea de senal esta conectada directamente a ground. Esa parte del circuito quedara en silencio.',
+        message: 'Una linea de señal esta conectada directamente a ground. Esa parte del circuito quedara en silencio.',
       })
     }
   }
@@ -464,7 +464,7 @@ export function validateSwitchPositions(context: ValidationContext): ValidationI
     for (const positionIssue of positionIssues) {
       const isMuted = positionIssue.code === 'jack_tip_no_signal'
       const message = isMuted
-        ? `En la posicion ${switchPosition.position} del selector, el jack no recibe senal de ninguna pastilla.`
+        ? `En la posicion ${switchPosition.position} del selector, el jack no recibe señal de ninguna pastilla.`
         : `En la posicion ${switchPosition.position} del selector, hay un corto que dejara la salida en silencio.`
 
       issues.push({

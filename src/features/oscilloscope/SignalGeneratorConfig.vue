@@ -43,10 +43,10 @@ function updateParam(key: 'waveform' | 'frequencyHz' | 'amplitudeVolts', event: 
 
 <template>
   <section v-if="activeGenerator" class="signal-generator-config">
-    <h3>Generador de senal</h3>
+    <h3>Generador de señal</h3>
 
     <div class="signal-generator-config__fields">
-      <p>Fuente electrica virtual: conecta salida a la senal y referencia a tierra.</p>
+      <p>Fuente electrica virtual: conecta salida a la señal y referencia a tierra.</p>
 
       <label>
         <span>Forma de onda</span>

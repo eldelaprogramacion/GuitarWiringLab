@@ -26,10 +26,10 @@ export interface EstimateOutputSignalInput {
 }
 
 const statusLabels: Record<OscilloscopeStatus, string> = {
-  'signal-ok': 'Senal OK',
+  'signal-ok': 'Señal OK',
   'output-shorted': 'Salida en corto',
-  'no-signal-path': 'Sin camino de senal',
-  'no-signal-source': 'Sin fuente de senal',
+  'no-signal-path': 'Sin camino de señal',
+  'no-signal-source': 'Sin fuente de señal',
   'missing-ground': 'Tierra ausente',
   'muted-switch-position': 'Posicion muda del selector',
   'floating-output': 'Salida flotante',
@@ -608,11 +608,11 @@ export function estimateOutputSignal(input: EstimateOutputSignalInput): Oscillos
     message:
       status === 'signal-ok'
         ? source?.kind === 'strings'
-          ? 'El excitador de cuerdas aplica senal conceptual a las pastillas conectadas.'
+          ? 'El excitador de cuerdas aplica señal conceptual a las pastillas conectadas.'
           : 'El generador esta conectado a una ruta de salida valida. La onda es una estimacion conceptual.'
         : status === 'no-signal-source'
           ? 'El osciloscopio queda en cero hasta conectar un generador o agregar un excitador de cuerdas.'
-        : 'El osciloscopio muestra linea plana porque la salida no esta lista para entregar senal.',
+        : 'El osciloscopio muestra linea plana porque la salida no esta lista para entregar señal.',
     isFlat,
     frequencyHz,
     amplitudeVolts: isFlat ? 0 : amplitudeVolts,

@@ -367,7 +367,7 @@ export function createSignalGenerator(
   return createComponent({
     ...options,
     type: 'signal_generator',
-    label: options.label ?? 'Generador de senal',
+    label: options.label ?? 'Generador de señal',
     category: 'instrument',
     pins: [
       pin('output', 'out', 'signal', 'measurement', 'output'),

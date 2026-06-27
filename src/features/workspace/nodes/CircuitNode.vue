@@ -29,6 +29,20 @@ const pinRoleLabels: Record<PinRole, string> = {
 }
 
 function pinRoleCode(pin: CircuitPin): string {
+  const pinId = String(pin.id)
+
+  if (pinId === 'in') {
+    return 'I'
+  }
+
+  if (pinId === 'out') {
+    return 'O'
+  }
+
+  if (pinId === 'ground') {
+    return 'G'
+  }
+
   return pinRoleLabels[pin.role]
 }
 
